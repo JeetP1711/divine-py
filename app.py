@@ -6,14 +6,15 @@ gardening, and plant-care products business.
 """
 
 import os
+from html import escape
 import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-from io import BytesIO
 from datetime import datetime
 
 from src.data_loader import load_data, REQUIRED_COLUMNS
+from src.exporter import build_excel_report
 from src.analytics import (
     calculate_line_metrics,
     overall_kpis,
@@ -195,22 +196,21 @@ def fmt_inr(value: float) -> str:
 
 def fmt_inr_abs(v: float) -> str:
     """Return the Indian-grouped string without the ₹ prefix."""
-    integer_part = int(v)
-    decimal_part = f"{v - integer_part:.2f}"[1:]  # e.g. ".45"
-    s = str(integer_part)
+    integer_part, fraction = f"{v:.2f}".split(".")
+    s = integer_part
     if len(s) <= 3:
-        return s + decimal_part
+        return s + "." + fraction
     last_three = s[-3:]
     remaining = s[:-3]
     groups = []
     while remaining:
         groups.insert(0, remaining[-2:])
         remaining = remaining[:-2]
-    return ",".join(groups) + "," + last_three + decimal_part
+    return ",".join(groups) + "," + last_three + "." + fraction
 
 
 def fmt_pct(value) -> str:
-    if value is None:
+    if value is None or pd.isna(value):
         return "–"
     return f"{value:.1f}%"
 
@@ -292,6 +292,13 @@ if not data_loaded:
 
 # Show validation messages in sidebar
 with st.sidebar:
+    source_identity = (
+        (uploaded_file.name, uploaded_file.size) if uploaded_file is not None else ("sample",)
+    )
+    if st.session_state.get("_loaded_source_identity") != source_identity:
+        st.session_state["_loaded_source_identity"] = source_identity
+        st.session_state["_last_loaded_at"] = datetime.now()
+
     if load_messages:
         st.markdown("##### ⚠️ Data Quality")
         for msg in load_messages:
@@ -307,25 +314,48 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("##### 🔍 Filters")
 
-    # Marketplace
     all_marketplaces = sorted(df_raw["marketplace"].unique().tolist())
+    all_skus = sorted(df_raw["sku"].unique().tolist())
+    date_min = df_raw["date"].min()
+    date_max = df_raw["date"].max()
+    file_identity = f"{uploaded_file.name}_{uploaded_file.size}" if uploaded_file else "sample"
+    filter_key = f"{file_identity}_{date_min}_{date_max}"
+    marketplace_key = f"marketplaces_{filter_key}"
+    sku_key = f"skus_{filter_key}"
+    start_key = f"start_date_{filter_key}"
+    end_key = f"end_date_{filter_key}"
+    st.session_state.setdefault(marketplace_key, all_marketplaces)
+    st.session_state.setdefault(sku_key, all_skus)
+    st.session_state.setdefault(start_key, date_min)
+    st.session_state.setdefault(end_key, date_max)
+    if st.button("Reset filters", use_container_width=True):
+        st.session_state[marketplace_key] = all_marketplaces
+        st.session_state[sku_key] = all_skus
+        st.session_state[start_key] = date_min
+        st.session_state[end_key] = date_max
+
+    # Marketplace
     selected_marketplaces = st.multiselect(
         "Marketplace",
         options=all_marketplaces,
-        default=all_marketplaces,
+        key=marketplace_key,
+    )
+
+    selected_skus = st.multiselect(
+        "Product / SKU",
+        options=all_skus,
+        key=sku_key,
     )
 
     # Date range
-    date_min = df_raw["date"].min()
-    date_max = df_raw["date"].max()
     col_d1, col_d2 = st.columns(2)
     with col_d1:
         selected_start = st.date_input(
-            "From", value=date_min, min_value=date_min, max_value=date_max
+            "From", min_value=date_min, max_value=date_max, key=start_key
         )
     with col_d2:
         selected_end = st.date_input(
-            "To", value=date_max, min_value=date_min, max_value=date_max
+            "To", min_value=date_min, max_value=date_max, key=end_key
         )
 
     # Refund alert threshold
@@ -344,11 +374,14 @@ with st.sidebar:
         st.caption(f"📄 **File:** {uploaded_file.name}")
     else:
         st.caption("📄 Using sample data")
-    st.caption(f"🕓 Last loaded: {datetime.now().strftime('%d %b %Y, %H:%M')}")
+    st.caption(
+        f"🕓 Last loaded: {st.session_state['_last_loaded_at'].strftime('%d %b %Y, %H:%M')}"
+    )
 
 # ── Apply filters ──
 mask = (
     df_raw["marketplace"].isin(selected_marketplaces)
+    & df_raw["sku"].isin(selected_skus)
     & (df_raw["date"] >= selected_start)
     & (df_raw["date"] <= selected_end)
 )
@@ -394,7 +427,7 @@ profit_color = "green" if kpis["estimated_contribution_profit"] >= 0 else "red"
 
 cards = [
     ("Net Sales", fmt_inr(kpis["net_sales"]), ""),
-    ("Est. Contribution Profit", fmt_inr(kpis["estimated_contribution_profit"]), profit_color),
+    ("Estimated Contribution Profit", fmt_inr(kpis["estimated_contribution_profit"]), profit_color),
     ("Contribution Margin", fmt_pct(kpis["contribution_margin_pct"]), margin_color),
     ("Units Sold", f'{int(kpis["units_sold"]):,}', ""),
     ("Unique Orders", f'{int(kpis["unique_orders"]):,}', ""),
@@ -435,7 +468,7 @@ with chart_col1:
                 x=daily["date"],
                 y=daily["estimated_profit"],
                 mode="lines+markers",
-                name="Est. Profit",
+                name="Estimated Contribution Profit",
                 line=dict(color="#FF9800", width=2, dash="dot"),
                 marker=dict(size=4),
                 hovertemplate="₹%{y:,.0f}<extra>Profit</extra>",
@@ -458,7 +491,7 @@ with chart_col2:
     st.markdown('<div class="section-header">🏪 Marketplace Performance</div>', unsafe_allow_html=True)
     market = summarize_by_marketplace(df)
     mp_metric = st.radio(
-        "View", ["Net Revenue", "Est. Profit"], horizontal=True, key="mp_metric"
+        "View", ["Net Revenue", "Estimated Contribution Profit"], horizontal=True, key="mp_metric"
     )
     y_col = "net_revenue" if mp_metric == "Net Revenue" else "estimated_profit"
     bar_color = BRAND_GREEN if mp_metric == "Net Revenue" else "#FF9800"
@@ -501,11 +534,15 @@ with top_col1:
     st.dataframe(top_rev, use_container_width=True, hide_index=True)
 
 with top_col2:
-    st.markdown("**Top 5 by Est. Contribution Profit**")
+    st.markdown("**Top 5 by Estimated Contribution Profit**")
     top_profit = sku_all.nlargest(5, "estimated_profit")[["sku", "product_name", "estimated_profit"]].copy()
-    top_profit["estimated_profit"] = top_profit["estimated_profit"].apply(fmt_inr)
-    top_profit = top_profit.rename(columns={"sku": "SKU", "product_name": "Product", "estimated_profit": "Est. Profit"})
-    st.dataframe(top_profit, use_container_width=True, hide_index=True)
+    top_profit = top_profit.rename(columns={"sku": "SKU", "product_name": "Product", "estimated_profit": "Estimated Contribution Profit"})
+    st.dataframe(
+        top_profit,
+        use_container_width=True,
+        hide_index=True,
+        column_config={"Estimated Contribution Profit": st.column_config.NumberColumn(format="₹%.2f")},
+    )
 
 # ═══════════════════════════════════════════════════════════
 # Product Performance Table
@@ -520,23 +557,22 @@ display_sku = display_sku.rename(
         "product_name": "Product Name",
         "units_sold": "Units Sold",
         "net_revenue": "Net Revenue",
-        "estimated_profit": "Est. Profit",
+        "estimated_profit": "Estimated Contribution Profit",
         "contribution_margin_pct": "Margin %",
         "total_refund": "Refund Amt",
     }
 )
-# Keep numeric for sorting; format only for display
-display_sku_styled = display_sku.copy()
-display_sku_styled["Net Revenue"] = display_sku_styled["Net Revenue"].apply(fmt_inr)
-display_sku_styled["Est. Profit"] = display_sku_styled["Est. Profit"].apply(fmt_inr)
-display_sku_styled["Refund Amt"] = display_sku_styled["Refund Amt"].apply(fmt_inr)
-display_sku_styled["Margin %"] = display_sku_styled["Margin %"].apply(fmt_pct)
-
 st.dataframe(
-    display_sku_styled,
+    display_sku,
     use_container_width=True,
     hide_index=True,
-    height=min(400, 56 + len(display_sku_styled) * 35),
+    height=min(400, 56 + len(display_sku) * 35),
+    column_config={
+        "Net Revenue": st.column_config.NumberColumn(format="₹%.2f"),
+        "Estimated Contribution Profit": st.column_config.NumberColumn(format="₹%.2f"),
+        "Refund Amt": st.column_config.NumberColumn(format="₹%.2f"),
+        "Margin %": st.column_config.NumberColumn(format="%.1f%%"),
+    },
 )
 
 # ═══════════════════════════════════════════════════════════
@@ -560,12 +596,12 @@ else:
         st.markdown(
             f"""
             <div class="alert-card {card_class}">
-                <div class="alert-title">{alert['title']}</div>
+                <div class="alert-title">{escape(str(alert['title']))}</div>
                 <div class="alert-body">
-                    <strong>{alert['product_name']}</strong> (SKU: {alert['sku']})
-                    — {alert['reason']} &nbsp;•&nbsp; <strong>{alert['value']}</strong>
+                    <strong>{escape(str(alert['product_name']))}</strong> (SKU: {escape(str(alert['sku']))})
+                    — {escape(str(alert['reason']))} &nbsp;•&nbsp; <strong>{escape(str(alert['value']))}</strong>
                 </div>
-                <div class="alert-suggestion">💡 {alert['suggestion']}</div>
+                <div class="alert-suggestion">💡 {escape(str(alert['suggestion']))}</div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -580,28 +616,10 @@ st.markdown('<div class="section-header">📥 Export Report</div>', unsafe_allow
 export_col1, export_col2 = st.columns([1, 4])
 with export_col1:
     if st.button("Generate Excel Report", type="primary"):
-        output = BytesIO()
-        with pd.ExcelWriter(output, engine="openpyxl") as writer:
-            # Sales Details
-            df.to_excel(writer, sheet_name="Sales Details", index=False)
-            # Product Summary
-            sku_all.to_excel(writer, sheet_name="Product Summary", index=False)
-            # Marketplace Summary
-            market.to_excel(writer, sheet_name="Marketplace Summary", index=False)
-            # Daily Summary
-            daily.to_excel(writer, sheet_name="Daily Summary", index=False)
-            # Business Alerts
-            alerts_df = pd.DataFrame(alerts)
-            if not alerts_df.empty:
-                alerts_df.to_excel(writer, sheet_name="Business Alerts", index=False)
-            else:
-                pd.DataFrame({"Note": ["No alerts for the selected period."]}).to_excel(
-                    writer, sheet_name="Business Alerts", index=False
-                )
-        output.seek(0)
+        report = build_excel_report(df, sku_all, market, daily, alerts)
         st.download_button(
             "⬇ Download Excel",
-            data=output,
+            data=report,
             file_name=f"DivineTree_Report_{selected_start}_to_{selected_end}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )

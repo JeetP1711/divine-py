@@ -10,12 +10,12 @@ Built with Python, Streamlit, Pandas, Plotly, and OpenPyXL.
 
 | Feature | Description |
 |---------|-------------|
-| **KPI Dashboard** | Net Sales, Est. Contribution Profit, Margin %, Units, Orders, AOV |
+| **KPI Dashboard** | Net Sales, Estimated Contribution Profit, Contribution Margin, Units, Orders, AOV |
 | **Daily Sales Trend** | Interactive line chart with optional profit overlay |
 | **Marketplace Performance** | Horizontal bar chart comparing revenue or profit across marketplaces |
 | **Top Products** | Separate Top-5 lists by revenue and by profit |
-| **Product Performance Table** | Full SKU-level table with sortable columns |
-| **Business Alerts** | Negative-profit and high-refund alerts with configurable thresholds |
+| **Product Performance Table** | Filterable SKU selection and sortable SKU-level columns |
+| **Business Alerts** | Negative-profit, break-even margin, zero-cost, and high-refund alerts |
 | **Excel Export** | Multi-sheet .xlsx report generated in-memory |
 | **CSV Template** | Downloadable template for data preparation |
 | **Sample Data** | Built-in dataset so users can explore immediately |
@@ -68,9 +68,12 @@ divine-tree/
 ├── src/
 │   ├── __init__.py
 │   ├── data_loader.py         # File upload, validation, normalisation
-│   └── analytics.py           # Business calculations, aggregations, alerts
+│   ├── analytics.py           # Business calculations, aggregations, alerts
+│   └── exporter.py            # Formatted, in-memory Excel report generation
 ├── tests/
-│   └── test_analytics.py      # 17 Pytest tests for core logic
+│   ├── test_analytics.py      # Calculation and alert tests
+│   ├── test_data_loader.py    # Upload and validation tests
+│   └── test_exporter.py       # Excel workbook tests
 ├── sample_data/
 │   └── sample_sales.csv       # 31-row sample dataset (fictional data)
 └── assets/
@@ -81,7 +84,7 @@ divine-tree/
 
 ## 📊 Required Data Schema
 
-Your uploaded CSV or Excel file **must** contain exactly these columns (case-insensitive):
+Your uploaded CSV or Excel file must contain these columns (headers are normalized for case, spaces, and punctuation):
 
 | Column | Type | Description |
 |--------|------|-------------|
@@ -101,7 +104,10 @@ Your uploaded CSV or Excel file **must** contain exactly these columns (case-ins
 **Notes:**
 - Each row = one order line. An order can have multiple lines (multiple SKUs).
 - `selling_price` and `unit_cost` are **per-unit**; other cost columns are **totals** for the line.
-- Missing values are reported — they are **never** silently set to zero.
+- Missing or non-numeric required values and negative prices/costs are rejected with spreadsheet row numbers; records are never silently dropped or imputed.
+- Zero unit cost is retained but warned about so it can be confirmed.
+- Identical duplicate rows are retained and reported as a warning for review.
+- CSV, XLSX, and XLSM files up to 50 MB are accepted. Legacy XLS files are not supported.
 - A downloadable CSV template is available in the sidebar.
 
 ---
@@ -112,7 +118,7 @@ Your uploaded CSV or Excel file **must** contain exactly these columns (case-ins
 Gross Sales           = units × selling_price
 Net Revenue           = gross_sales − refund_amount
 Cost of Goods         = units × unit_cost
-Est. Contribution Profit = revenue − cost_of_goods − platform_fee − shipping_cost − ad_cost
+Estimated Contribution Profit = revenue − cost_of_goods − platform_fee − shipping_cost − ad_cost
 Profit Margin %       = est. profit / revenue × 100   (undefined when revenue = 0)
 Average Order Value   = total net revenue / count of unique order_ids
 ```
@@ -126,10 +132,10 @@ Aggregated margins use `total_profit / total_revenue`, not the average of indivi
 ## 🧪 Running Tests
 
 ```bash
-python -m pytest tests/test_analytics.py -v
+python -m pytest -v
 ```
 
-**17 tests** covering:
+**35 tests** covering:
 - Gross sales, revenue, profit, and margin calculations
 - Zero-revenue edge case
 - Empty dataset handling
@@ -137,8 +143,18 @@ python -m pytest tests/test_analytics.py -v
 - Multi-SKU order counting
 - SKU, marketplace, and daily aggregations
 - Negative-profit and high-refund alert detection
-- Combined alert generation
+- Combined, break-even margin, and zero-cost alert generation
 - Filtered subset consistency
+- Required-column, missing-value, numeric, and negative-cost validation
+- Duplicate-row warnings, empty files, CSV and XLSX upload parsing
+- Workbook sheets, exported metric consistency, and number formats
+
+## 🛠️ Troubleshooting
+
+- **Missing columns:** Download the CSV template and ensure all 12 required headers are present.
+- **Invalid or blank values:** Correct the spreadsheet rows named in the error. Missing costs and other required values are never replaced with zero.
+- **Could not read file:** Re-save as CSV, XLSX, or XLSM and keep the upload below 50 MB; password-protected and legacy XLS files are not supported.
+- **Dashboard dependency errors:** Reinstall packages with `pip install -r requirements.txt` in the active virtual environment.
 
 ---
 
@@ -155,7 +171,7 @@ python -m pytest tests/test_analytics.py -v
 
 ## ⚠️ Known Limitations
 
-1. **Large files** may impact performance (everything is in-memory pandas).
+1. **Large files** may impact performance; uploads are limited to 50 MB and processed in-memory with pandas.
 2. **No marketplace-specific adapters** — the MVP requires the normalised schema.
 3. **No persistent storage** — data resets on page refresh.
 4. **No multi-user access** — single local Streamlit instance.

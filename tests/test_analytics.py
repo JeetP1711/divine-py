@@ -274,3 +274,32 @@ def test_filtered_kpis_match_subset(sample_df: pd.DataFrame):
     assert kpis["net_sales"] == 400
     assert kpis["unique_orders"] == 1  # only ORD1 on Amazon
     assert kpis["average_order_value"] == 400.0
+
+
+def test_aggregated_margin_uses_total_profit_over_total_revenue(sample_df: pd.DataFrame):
+    summary = summarize_by_sku(sample_df)
+    sku1 = summary[summary["sku"] == "SKU1"].iloc[0]
+    assert sku1["contribution_margin_pct"] == pytest.approx(155 / 500 * 100)
+
+
+def test_generate_alerts_includes_break_even_and_zero_cost_products():
+    df = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2024-01-01", "2024-01-01"]).date,
+            "order_id": ["O1", "O2"],
+            "marketplace": ["Amazon", "Amazon"],
+            "sku": ["BREAK-EVEN", "NO-COST"],
+            "product_name": ["Break Even Product", "Missing Cost Product"],
+            "units": [1, 1],
+            "selling_price": [100, 100],
+            "unit_cost": [80, 0],
+            "platform_fee": [10, 10],
+            "shipping_cost": [5, 5],
+            "ad_cost": [5, 5],
+            "refund_amount": [0, 0],
+        }
+    )
+    alerts = generate_alerts(calculate_line_metrics(df))
+    titles_by_sku = {alert["sku"]: alert["title"] for alert in alerts}
+    assert titles_by_sku["BREAK-EVEN"] == "Zero or Negative Margin"
+    assert titles_by_sku["NO-COST"] == "Suspicious Cost Information"

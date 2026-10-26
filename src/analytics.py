@@ -1,5 +1,12 @@
+from typing import Dict, List
+
 import pandas as pd
-from typing import List, Dict, Tuple
+
+
+def _margin_pct(profit: pd.Series, revenue: pd.Series) -> pd.Series:
+    margin = profit.div(revenue).mul(100)
+    return margin.astype(object).where(revenue.ne(0), None)
+
 
 # --- Calculation Functions ---
 
@@ -23,11 +30,7 @@ def calculate_line_metrics(df: pd.DataFrame) -> pd.DataFrame:
         - df["shipping_cost"]
         - df["ad_cost"]
     )
-    # Profit margin percentage, handle zero revenue
-    df["profit_margin_pct"] = df.apply(
-        lambda row: (row["estimated_profit"] / row["revenue"] * 100) if row["revenue"] != 0 else None,
-        axis=1,
-    )
+    df["profit_margin_pct"] = _margin_pct(df["estimated_profit"], df["revenue"])
     return df
 
 
@@ -45,10 +48,7 @@ def summarize_by_sku(df: pd.DataFrame) -> pd.DataFrame:
         )
     )
     # Contribution margin per SKU
-    agg["contribution_margin_pct"] = agg.apply(
-        lambda r: (r["estimated_profit"] / r["net_revenue"] * 100) if r["net_revenue"] != 0 else None,
-        axis=1,
-    )
+    agg["contribution_margin_pct"] = _margin_pct(agg["estimated_profit"], agg["net_revenue"])
     return agg
 
 
@@ -61,10 +61,7 @@ def summarize_by_marketplace(df: pd.DataFrame) -> pd.DataFrame:
             estimated_profit=pd.NamedAgg(column="estimated_profit", aggfunc="sum"),
         )
     )
-    agg["contribution_margin_pct"] = agg.apply(
-        lambda r: (r["estimated_profit"] / r["net_revenue"] * 100) if r["net_revenue"] != 0 else None,
-        axis=1,
-    )
+    agg["contribution_margin_pct"] = _margin_pct(agg["estimated_profit"], agg["net_revenue"])
     return agg
 
 
@@ -77,10 +74,7 @@ def daily_summary(df: pd.DataFrame) -> pd.DataFrame:
             estimated_profit=pd.NamedAgg(column="estimated_profit", aggfunc="sum"),
         )
     )
-    agg["contribution_margin_pct"] = agg.apply(
-        lambda r: (r["estimated_profit"] / r["net_revenue"] * 100) if r["net_revenue"] != 0 else None,
-        axis=1,
-    )
+    agg["contribution_margin_pct"] = _margin_pct(agg["estimated_profit"], agg["net_revenue"])
     return agg
 
 
@@ -103,11 +97,10 @@ def identify_high_refund_products(df: pd.DataFrame, threshold_pct: float = 10.0)
             total_refund=pd.NamedAgg(column="refund_amount", aggfunc="sum"),
         )
     )
-    sku["refund_pct"] = sku.apply(
-        lambda r: (r["total_refund"] / r["gross_sales"] * 100) if r["gross_sales"] != 0 else None,
-        axis=1,
+    sku["refund_pct"] = (
+        sku["total_refund"].div(sku["gross_sales"]).mul(100).where(sku["gross_sales"].ne(0))
     )
-    return sku[sku["refund_pct"] >= threshold_pct]
+    return sku[sku["refund_pct"].ge(threshold_pct)]
 
 
 def average_order_value(df: pd.DataFrame) -> float:
@@ -152,13 +145,43 @@ def generate_alerts(df: pd.DataFrame, refund_threshold: float = 10.0) -> List[Di
     # Negative profit
     neg = identify_negative_profit_products(df)
     for _, row in neg.iterrows():
+        margin = row["contribution_margin_pct"]
+        reason = "Estimated contribution profit is negative"
+        if margin is not None and not pd.isna(margin) and margin < 0:
+            reason += f" and contribution margin is {margin:.1f}%"
         alerts.append({
             "title": "Negative Profit",
             "sku": row["sku"],
             "product_name": row["product_name"],
-            "reason": "Estimated contribution profit is negative",
+            "reason": reason,
             "value": f"₹{row['estimated_profit']:.2f}",
             "suggestion": "Review cost structure and pricing for this product.",
+        })
+    # Surface break-even products separately without duplicating loss-making alerts.
+    sku_summary = summarize_by_sku(df)
+    zero_margin = sku_summary[
+        (sku_summary["estimated_profit"] >= 0)
+        & sku_summary["contribution_margin_pct"].le(0)
+    ]
+    for _, row in zero_margin.iterrows():
+        alerts.append({
+            "title": "Zero or Negative Margin",
+            "sku": row["sku"],
+            "product_name": row["product_name"],
+            "reason": "Estimated contribution margin is zero or negative",
+            "value": f"{row['contribution_margin_pct']:.1f}%",
+            "suggestion": "Investigate whether all line-level costs and discounts are represented.",
+        })
+
+    zero_cost_products = df.loc[df["unit_cost"].eq(0), ["sku", "product_name"]].drop_duplicates()
+    for _, row in zero_cost_products.iterrows():
+        alerts.append({
+            "title": "Suspicious Cost Information",
+            "sku": row["sku"],
+            "product_name": row["product_name"],
+            "reason": "One or more sales lines have a unit cost of ₹0",
+            "value": "₹0 unit cost",
+            "suggestion": "Confirm the product cost before using its profitability estimate.",
         })
     # High refund
     high_refund = identify_high_refund_products(df, threshold_pct=refund_threshold)
@@ -169,6 +192,6 @@ def generate_alerts(df: pd.DataFrame, refund_threshold: float = 10.0) -> List[Di
             "product_name": row["product_name"],
             "reason": f"Refunds are {row['refund_pct']:.1f}% of gross sales",
             "value": f"₹{row['total_refund']:.2f}",
-            "suggestion": "Investigate reasons for refunds and consider policy adjustments.",
+            "suggestion": "Investigate the refund reasons and product or fulfillment issues.",
         })
     return alerts
