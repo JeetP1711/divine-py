@@ -1,105 +1,180 @@
-# Divine Tree Intelligence Dashboard
+# 🌿 Divine Tree Intelligence
 
-## Overview
+**E-Commerce Analytics Dashboard** for Divine Tree — an Indian agriculture, gardening, and plant-care products business.
 
-**Divine Tree Intelligence** is a lightweight, business‑ready analytics dashboard built with **Python**, **Streamlit**, **Pandas**, and **Plotly**. It helps the management of Divine Tree (an Indian agriculture & gardening products business) to explore sales performance, profitability, marketplace comparison, and product‑level insights.
+Built with Python, Streamlit, Pandas, Plotly, and OpenPyXL.
 
-The application:
-- Loads CSV or Excel sales reports (with a defined schema).
-- Validates and normalises the data.
-- Calculates key metrics such as net sales, estimated contribution profit, contribution margin, units sold, unique orders, and average order value.
-- Provides interactive KPI cards, trend charts, marketplace comparison, product performance tables, and rule‑based alerts.
-- Allows exporting the analysed data to a downloadable Excel workbook.
+---
 
-## Project Structure
+## ✨ Features
 
-```
-Divine Tree Intelligence/
-├─ app.py                     # Streamlit UI entry point
-├─ requirements.txt           # Python dependencies
-├─ README.md                  # This file
-├─ .gitignore                 # Ignored files
-├─ src/
-│   ├─ __init__.py
-│   ├─ data_loader.py         # File upload & validation
-│   └─ analytics.py           # Business calculations & alerts
-├─ tests/
-│   └─ test_analytics.py     # Pytest suite for core logic
-├─ sample_data/
-│   └─ sample_sales.csv       # Sample dataset for demo
-└─ assets/
-    └─ .gitkeep              # Placeholder for future assets
-```
+| Feature | Description |
+|---------|-------------|
+| **KPI Dashboard** | Net Sales, Est. Contribution Profit, Margin %, Units, Orders, AOV |
+| **Daily Sales Trend** | Interactive line chart with optional profit overlay |
+| **Marketplace Performance** | Horizontal bar chart comparing revenue or profit across marketplaces |
+| **Top Products** | Separate Top-5 lists by revenue and by profit |
+| **Product Performance Table** | Full SKU-level table with sortable columns |
+| **Business Alerts** | Negative-profit and high-refund alerts with configurable thresholds |
+| **Excel Export** | Multi-sheet .xlsx report generated in-memory |
+| **CSV Template** | Downloadable template for data preparation |
+| **Sample Data** | Built-in dataset so users can explore immediately |
+| **Indian Formatting** | ₹ currency with Indian comma grouping (e.g. ₹1,25,000.00) |
 
-## Installation
+---
 
-1. **Clone the repository** (or copy the folder to your machine).
-2. **Create a virtual environment** (optional but recommended):
-   ```bash
-   python -m venv venv
-   venv\Scripts\activate   # Windows
-   # source venv/bin/activate   # macOS/Linux
-   ```
-3. **Install dependencies**:
-   ```bash
-   pip install -r requirements.txt
-   ```
-4. **Run the dashboard**:
-   ```bash
-   streamlit run app.py
-   ```
-   The app will open in your default browser at `http://localhost:8501`.
+## 🚀 Quick Start
 
-## Data Schema
+### Prerequisites
 
-The uploaded file must contain **exactly** the following columns (case‑insensitive, spaces will be trimmed):
+- Python 3.11 or later
+- pip
 
-| Column | Description |
-|--------|-------------|
-| `date` | Order date (YYYY‑MM‑DD or any parseable format) |
-| `order_id` | Unique order identifier |
-| `marketplace` | Marketplace name (e.g., Amazon, Flipkart) |
-| `sku` | Stock‑keeping unit identifier |
-| `product_name` | Human‑readable product name |
-| `units` | Number of units sold (net fulfilled) |
-| `selling_price` | Per‑unit selling price (₹) |
-| `unit_cost` | Per‑unit cost of goods (₹) |
-| `platform_fee` | Total platform fee for the line (₹) |
-| `shipping_cost` | Total shipping cost for the line (₹) |
-| `ad_cost` | Total advertising cost for the line (₹) |
-| `refund_amount` | Total refund amount for the line (₹) |
-
-**Important:** No column may be omitted. Missing values are reported as validation errors; they are **not** silently filled.
-
-A downloadable CSV template is provided in the UI.
-
-## Core Calculations (see `src/analytics.py`)
-
-- **Gross sales**: `units * selling_price`
-- **Revenue (net sales)**: `gross_sales - refund_amount`
-- **Cost of goods**: `units * unit_cost`
-- **Estimated contribution profit**: `revenue - cost_of_goods - platform_fee - shipping_cost - ad_cost`
-- **Profit margin %**: `estimated_profit / revenue * 100` (undefined when revenue = 0)
-- **AOV**: `total net revenue / number of unique orders`
-
-All aggregations (by SKU, marketplace, date) use the summed values of the line‑level metrics.
-
-## Running Tests
-
-The test suite validates the calculation logic and edge‑cases.
+### Installation
 
 ```bash
-pytest -q
+# Clone the repository (or copy the folder to your machine)
+cd divine-tree
+
+# (Optional) Create a virtual environment
+python -m venv venv
+venv\Scripts\activate        # Windows
+# source venv/bin/activate   # macOS / Linux
+
+# Install dependencies
+pip install -r requirements.txt
 ```
 
-All tests should pass. If you add new functionality, extend the tests accordingly.
+### Run the Dashboard
 
-## Limitations & Future Enhancements
+```bash
+streamlit run app.py
+```
 
-- No authentication – suitable for internal use only.
-- Data is kept in memory; large files may impact performance.
-- Marketplace‑specific adapters, inventory forecasting, automated email reports, and multi‑user deployment are planned (see the *Future Roadmap* section in the original spec).
+Open your browser at **http://localhost:8501**.
 
-## License
+The app loads with sample data automatically — no upload required.
 
-This project is provided for educational and internal prototyping purposes. Feel free to adapt and extend it for your own needs.
+---
+
+## 📁 Project Structure
+
+```
+divine-tree/
+├── app.py                     # Streamlit dashboard (UI)
+├── requirements.txt           # Python dependencies
+├── README.md                  # This file
+├── .gitignore
+├── src/
+│   ├── __init__.py
+│   ├── data_loader.py         # File upload, validation, normalisation
+│   └── analytics.py           # Business calculations, aggregations, alerts
+├── tests/
+│   └── test_analytics.py      # 17 Pytest tests for core logic
+├── sample_data/
+│   └── sample_sales.csv       # 31-row sample dataset (fictional data)
+└── assets/
+    └── .gitkeep
+```
+
+---
+
+## 📊 Required Data Schema
+
+Your uploaded CSV or Excel file **must** contain exactly these columns (case-insensitive):
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `date` | Date | Order date (YYYY-MM-DD or any parsable format) |
+| `order_id` | Text | Unique order identifier |
+| `marketplace` | Text | Source marketplace (e.g., Amazon, Flipkart, Meesho) |
+| `sku` | Text | Stock-keeping unit code |
+| `product_name` | Text | Human-readable product name |
+| `units` | Number | Net fulfilled units |
+| `selling_price` | Number | Per-unit selling price (₹) |
+| `unit_cost` | Number | Per-unit cost of goods (₹) |
+| `platform_fee` | Number | Total platform fee for the line (₹) |
+| `shipping_cost` | Number | Total shipping cost for the line (₹) |
+| `ad_cost` | Number | Total advertising cost for the line (₹) |
+| `refund_amount` | Number | Total refund amount for the line (₹) |
+
+**Notes:**
+- Each row = one order line. An order can have multiple lines (multiple SKUs).
+- `selling_price` and `unit_cost` are **per-unit**; other cost columns are **totals** for the line.
+- Missing values are reported — they are **never** silently set to zero.
+- A downloadable CSV template is available in the sidebar.
+
+---
+
+## 🧮 Core Formulas
+
+```
+Gross Sales           = units × selling_price
+Net Revenue           = gross_sales − refund_amount
+Cost of Goods         = units × unit_cost
+Est. Contribution Profit = revenue − cost_of_goods − platform_fee − shipping_cost − ad_cost
+Profit Margin %       = est. profit / revenue × 100   (undefined when revenue = 0)
+Average Order Value   = total net revenue / count of unique order_ids
+```
+
+**Important:** These are *estimated contribution profits*, not formal accounting profits. GST, packaging, warehousing, overhead, and marketplace settlement adjustments are **not** included unless supplied in the data.
+
+Aggregated margins use `total_profit / total_revenue`, not the average of individual row margins.
+
+---
+
+## 🧪 Running Tests
+
+```bash
+python -m pytest tests/test_analytics.py -v
+```
+
+**17 tests** covering:
+- Gross sales, revenue, profit, and margin calculations
+- Zero-revenue edge case
+- Empty dataset handling
+- Overall KPIs and AOV
+- Multi-SKU order counting
+- SKU, marketplace, and daily aggregations
+- Negative-profit and high-refund alert detection
+- Combined alert generation
+- Filtered subset consistency
+
+---
+
+## 🔒 Privacy & Security
+
+- **No external data transmission** — all processing happens locally.
+- **In-memory processing** — uploaded files are not written to disk.
+- **File validation** — type and schema checks before processing.
+- **No credentials stored** — nothing sensitive in the codebase.
+
+> ⚠️ This is an internal prototype. For production deployment, add authentication, HTTPS, access control, and proper data protection.
+
+---
+
+## ⚠️ Known Limitations
+
+1. **Large files** may impact performance (everything is in-memory pandas).
+2. **No marketplace-specific adapters** — the MVP requires the normalised schema.
+3. **No persistent storage** — data resets on page refresh.
+4. **No multi-user access** — single local Streamlit instance.
+5. **Indian number formatting** is custom (not locale-based).
+
+---
+
+## 🗺️ Future Roadmap (Not Yet Implemented)
+
+- Amazon SP-API / Flipkart / Meesho report adapters
+- Website analytics integration
+- SKU master & cost catalog
+- Inventory forecasting & reorder recommendations
+- Scheduled email reports
+- AI-generated management summaries
+- Multi-user access & cloud deployment
+
+---
+
+## 📜 License
+
+Internal prototype — adapt and extend as needed for your business.
